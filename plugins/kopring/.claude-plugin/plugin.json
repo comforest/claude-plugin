@@ -1,0 +1,11 @@
+{
+  "name": "kopring",
+  "version": "1.0.0",
+  "description": "Claude Code plugin for Gradle + Kotlin Spring Boot projects. Provides a structured 3-phase feature development workflow (plan → implement → PR).",
+  "author": {
+    "name": "comforest"
+  },
+  "license": "MIT",
+  "keywords": ["skills", "spring-boot", "kotlin", "gradle"],
+  "skills": "./skills"
+}

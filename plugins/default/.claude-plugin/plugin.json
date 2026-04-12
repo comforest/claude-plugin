@@ -1,0 +1,11 @@
+{
+  "name": "default",
+  "version": "1.0.0",
+  "description": "General-purpose Claude Code hooks for WSL2/Windows development. Provides automatic worktree creation and desktop notifications for permission requests and task completion.",
+  "author": {
+    "name": "comforest"
+  },
+  "license": "MIT",
+  "keywords": ["hooks", "worktree", "notification", "wsl2", "windows"],
+  "hooks": "./hooks/hooks.json"
+}

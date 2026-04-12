@@ -1,0 +1,24 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "comforest",
+  "description": "Claude Code plugins for Kotlin/Java Spring Boot development with Gradle. Includes worktree management, desktop notifications, and structured feature development workflows.",
+  "owner": {
+    "name": "comforest"
+  },
+  "plugins": [
+    {
+      "name": "default",
+      "description": "General-purpose hooks for WSL2/Windows development. Automatic worktree creation and desktop notifications for permission requests and task completion.",
+      "category": "development",
+      "source": "./plugins/default",
+      "homepage": "https://github.com/comforest/claude-plugin"
+    },
+    {
+      "name": "kopring",
+      "description": "Gradle + Kotlin Spring Boot plugin. Structured 3-phase feature development skill (plan → implement → PR) with code convention, deployment safety, and security review.",
+      "category": "development",
+      "source": "./plugins/kopring",
+      "homepage": "https://github.com/comforest/claude-plugin"
+    }
+  ]
+}
