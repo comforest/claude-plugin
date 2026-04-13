@@ -1,17 +1,2 @@
 {
-  "hooks": {
-    "PostToolUse": [
-      {
-        "matcher": "Write|Edit",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "f=$(jq -r '.tool_input.file_path // empty'); [[ \"$f\" == *.kt ]] || exit 0; root=$(dirname \"$f\"); while [[ \"$root\" != \"/\" ]] && [[ ! -f \"$root/gradlew\" ]]; do root=$(dirname \"$root\"); done; [[ -f \"$root/gradlew\" ]] && (cd \"$root\" && ./gradlew ktlintFormat 2>/dev/null) || true",
-            "statusMessage": "Running ktlintFormat...",
-            "timeout": 60
-          }
-        ]
-      }
-    ]
-  }
 }
