@@ -15,8 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/notify-permission.sh",
-            "async": true
+            "command": "$HOME/.claude/plugins/marketplaces/comforest/plugins/default/scripts/notify-permission.sh"
           }
         ]
       }
