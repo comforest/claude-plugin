@@ -1,4 +1,6 @@
 #!/bin/bash
+command -v powershell.exe &>/dev/null || exit 0
+
 powershell.exe -NoProfile -NonInteractive -Command "
   Add-Type -AssemblyName System.Windows.Forms
   \$n = New-Object System.Windows.Forms.NotifyIcon
