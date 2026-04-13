@@ -9,4 +9,4 @@ powershell.exe -NoProfile -NonInteractive -Command "
   \$n.ShowBalloonTip(4000, 'Claude Code', '작업이 완료되었습니다', [System.Windows.Forms.ToolTipIcon]::Info)
   Start-Sleep -Seconds 4
   \$n.Dispose()
-" &>/dev/null || true
+" 2>/dev/null &
