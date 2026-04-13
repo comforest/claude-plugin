@@ -9,4 +9,4 @@ powershell.exe -NoProfile -NonInteractive -Command "
   \$n.ShowBalloonTip(4000, 'Claude Code', '권한 확인이 필요합니다', [System.Windows.Forms.ToolTipIcon]::Warning)
   Start-Sleep -Seconds 4
   \$n.Dispose()
-" &
+" &>/dev/null || true
