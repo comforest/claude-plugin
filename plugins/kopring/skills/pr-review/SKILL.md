@@ -1,0 +1,161 @@
+---
+name: pr-review
+description: >
+  origin(fork) PR에 사용자가 남긴 코드리뷰 코멘트를 읽어 코드에 반영할 때 사용하는 스킬입니다.
+  "리뷰 반영", "리뷰 처리", "PR 리뷰 반영해줘", "코멘트 반영", "pr-review",
+  "리뷰 comment 처리" 등의 요청에 이 스킬을 사용하세요.
+  리뷰 코멘트를 주제별로 그룹핑하고, 그룹 단위로 커밋을 나눠 반영합니다.
+---
+
+# pr-review — PR 코드리뷰 반영 스킬
+
+origin(fork) PR에 사용자가 남긴 리뷰 코멘트를 수집/분류하고,
+**비슷한 성격의 리뷰끼리 묶어 그룹 단위로 커밋을 나누어** 코드에 반영합니다.
+
+전제: 현재 브랜치가 origin PR의 head 브랜치이며, 리뷰 코멘트는 이미 origin PR에 작성되어 있음.
+
+---
+
+## Step 1. PR 특정 및 리뷰 코멘트 수집
+
+현재 브랜치와 연결된 PR을 찾습니다:
+```bash
+gh pr view --json number,headRefName,baseRefName,url
+```
+
+PR이 여러 개거나 찾지 못하면 사용자에게 번호를 물어봅니다.
+
+리뷰 코멘트를 모두 가져옵니다 (인라인 + 일반 리뷰 + 이슈 코멘트):
+```bash
+PR_NUMBER=<번호>
+
+# 인라인 코드 코멘트 (파일/라인 포함)
+gh api "repos/{owner}/{repo}/pulls/${PR_NUMBER}/comments" \
+  --jq '.[] | {id, path, line, body, user: .user.login, in_reply_to_id}'
+
+# PR 전체 리뷰 (승인/변경요청 본문)
+gh api "repos/{owner}/{repo}/pulls/${PR_NUMBER}/reviews" \
+  --jq '.[] | {id, state, body, user: .user.login}'
+
+# 일반 이슈 코멘트
+gh api "repos/{owner}/{repo}/issues/${PR_NUMBER}/comments" \
+  --jq '.[] | {id, body, user: .user.login}'
+```
+
+- **본인(Claude)이 남긴 코멘트는 제외**하고 사용자(리뷰어) 것만 대상으로 합니다.
+- 리뷰어의 답글(reply)이 달린 스레드는 **가장 마지막 상태**를 기준으로 처리 필요 여부를 판단합니다 (이미 해결된 스레드는 스킵).
+- Resolved 상태 조회가 필요하면:
+  ```bash
+  gh api graphql -f query='
+    query($owner:String!,$repo:String!,$pr:Int!){
+      repository(owner:$owner,name:$repo){
+        pullRequest(number:$pr){
+          reviewThreads(first:100){
+            nodes{ isResolved comments(first:20){ nodes{ body path line author{login} } } }
+          }
+        }
+      }
+    }' -F owner=<owner> -F repo=<repo> -F pr=${PR_NUMBER}
+  ```
+  `isResolved: true`인 스레드는 건너뜁니다.
+
+---
+
+## Step 2. 코멘트 분류 및 그룹핑
+
+수집된 코멘트를 **주제별로 그룹핑**합니다. 그룹핑 기준 예시:
+
+- **네이밍/컨벤션**: 변수·함수·클래스 이름, 패키지 구조, 코드 스타일
+- **로직 수정**: 버그, 분기 누락, 계산 오류
+- **에러 처리**: 예외 타입, null 처리, 유효성 검증
+- **성능**: N+1, 불필요한 호출, 캐싱
+- **테스트**: 테스트 추가/수정
+- **리팩터링**: 추출, 중복 제거, 가독성
+- **문서/주석**: KDoc, 주석 보강
+
+사용자에게 그룹핑 결과를 **간단한 표 형식으로 제시**하고 승인을 받습니다:
+
+```
+그룹 1 (네이밍): 3개 코멘트 — UserService.kt L42, L58 / UserController.kt L21
+그룹 2 (에러 처리): 2개 코멘트 — OrderService.kt L88, L104
+그룹 3 (테스트): 1개 코멘트 — OrderServiceTest.kt L30
+```
+
+- **애매한 코멘트**(무엇을 요구하는지 불분명)는 임의 해석하지 말고 사용자에게 의미를 확인합니다.
+- **반영하지 않을 코멘트**(질문/논의용)는 별도로 분류해 사용자에게 보고합니다.
+
+---
+
+## Step 3. 그룹 단위 반영 및 커밋
+
+그룹 순서대로 처리합니다. **한 그룹 = 한 커밋**이 원칙입니다.
+
+각 그룹마다:
+
+1. 해당 그룹의 모든 코멘트를 반영하도록 코드를 수정합니다.
+2. 수정이 끝나면 관련 파일만 스테이징:
+   ```bash
+   git add <그룹에 해당하는 파일들>
+   git diff --staged
+   ```
+3. 커밋 메시지는 Conventional Commits 형식, 리뷰 반영임을 scope나 본문에 명시:
+   ```bash
+   git commit -m "refactor(review): <그룹 요약>
+
+   - <코멘트 1 반영 내용>
+   - <코멘트 2 반영 내용>
+
+   Refs: PR #${PR_NUMBER}"
+   ```
+   주제별 type 가이드:
+   - 네이밍/스타일/추출 → `refactor`
+   - 버그/로직 수정 → `fix`
+   - 테스트 추가 → `test`
+   - 문서/주석 → `docs`
+   - 성능 → `perf`
+
+4. 관련 테스트가 있으면 그룹 단위로 돌려봅니다:
+   ```bash
+   ./gradlew test --tests <관련 테스트>
+   ```
+
+> **그룹 간 의존성 주의**: 후속 그룹이 앞 그룹의 변경에 의존하면 순서를 지킵니다. 의존이 없다면 사용자에게 순서 변경 가능함을 알립니다.
+
+---
+
+## Step 4. 최종 빌드 및 push
+
+모든 그룹 반영 후 전체 빌드를 돌립니다:
+```bash
+./gradlew build   # Windows: gradlew.bat build
+```
+
+통과하면 origin에 push:
+```bash
+git push origin <branch-name>
+```
+
+> push 후에도 force push는 하지 않습니다 (리뷰 스레드 보존). 만약 rebase/squash가 필요하면 사용자에게 먼저 확인합니다.
+
+---
+
+## Step 5. 리뷰 스레드에 응답 (선택)
+
+사용자가 원하면 각 스레드에 간단한 답글을 자동으로 달 수 있습니다:
+```bash
+gh api "repos/{owner}/{repo}/pulls/${PR_NUMBER}/comments/<comment-id>/replies" \
+  -f body="반영했습니다 (commit <sha>)"
+```
+
+- 기본값은 **답글을 달지 않음**. 사용자가 "답글도 달아줘"라고 명시한 경우만 수행합니다.
+- Resolve 처리(reviewThread resolve)는 리뷰어의 권한이므로 **자동으로 하지 않습니다**.
+
+---
+
+## 주의사항
+
+- **임의 해석 금지**: 리뷰 의도가 불분명하면 반드시 사용자에게 확인. 잘못 반영한 커밋은 리뷰 맥락을 꼬이게 합니다.
+- **그룹이 너무 크면 분할**: 한 그룹이 5개 이상의 파일에 걸치면 세부 주제로 다시 나눕니다.
+- **그룹이 너무 작으면 병합 고려**: 단 1개 코멘트짜리 그룹이 여러 개면, 성격이 가까운 것끼리 합쳐 커밋 수를 줄입니다.
+- **force push 금지**: 리뷰 스레드/인라인 코멘트의 라인 앵커가 깨질 수 있음. 명시적 허락이 있을 때만.
+- **리뷰 외 변경 금지**: 리뷰에서 지적하지 않은 코드는 건드리지 않습니다. 눈에 띄는 이슈는 커밋하지 말고 사용자에게 보고만 합니다.
