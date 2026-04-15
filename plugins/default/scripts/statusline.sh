@@ -1,10 +1,9 @@
 #!/bin/sh
-# Claude Code status line - dir + branch | model + usage meters
+# Claude Code status line - dir + branch | ctx | rate limit meters
 
 input=$(cat)
 
 cwd=$(echo "$input" | jq -r '.workspace.current_dir // .cwd // ""')
-model=$(echo "$input" | jq -r '.model.display_name // ""')
 
 # Rate limits (Pro/Max only, may be absent)
 five_pct=$(echo "$input" | jq -r '.rate_limits.five_hour.used_percentage // empty')
@@ -33,17 +32,31 @@ fi
 home="$HOME"
 short_cwd="${cwd/#$home/\~}"
 
-# Format reset timestamp as absolute time (HH:MM)
+# Format remaining time until reset (1d 2h 30m format)
 # Args: unix_timestamp
 format_reset() {
   ts=$1
   if [ -z "$ts" ]; then
     return
   fi
-  date -d "@$ts" '+%m/%d %H:%M' 2>/dev/null || date -r "$ts" '+%m/%d %H:%M' 2>/dev/null
+  now=$(date +%s)
+  diff=$((ts - now))
+  if [ "$diff" -le 0 ]; then
+    return
+  fi
+  d=$((diff / 86400))
+  h=$(( (diff % 86400) / 3600 ))
+  m=$(( (diff % 3600) / 60 ))
+  if [ "$d" -gt 0 ]; then
+    printf '%dd %dh' "$d" "$h"
+  elif [ "$h" -gt 0 ]; then
+    printf '%dh %dm' "$h" "$m"
+  else
+    printf '%dm' "$m"
+  fi
 }
 
-# Format token count to human-readable (e.g., 45.2k, 1.2M)
+# Format token count to human-readable (e.g., 45k, 1.2M)
 format_tokens() {
   t=$1
   if [ -z "$t" ] || [ "$t" = "0" ]; then
@@ -89,58 +102,88 @@ else
   left="$short_cwd"
 fi
 
-# ── Right: model + usage meters ───────────────────────────────────────────────
-right=""
+# ── Build segments ─────────────────────────────────────────────────────────────
 
-append_right() {
-  if [ -z "$right" ]; then
-    right="$1"
-  else
-    right="$right  |  $1"
-  fi
-}
-
-# Model
-if [ -n "$model" ]; then
-  append_right "$model"
-fi
-
-# 5-hour rate limit + reset time
-if [ -n "$five_pct" ]; then
-  bar=$(make_bar "$five_pct")
-  reset=$(format_reset "$five_reset")
-  if [ -n "$reset" ]; then
-    append_right "5h: $bar ↻${reset}"
-  else
-    append_right "5h: $bar"
-  fi
-fi
-
-# Weekly rate limit + reset time
-if [ -n "$week_pct" ]; then
-  bar=$(make_bar "$week_pct")
-  reset=$(format_reset "$week_reset")
-  if [ -n "$reset" ]; then
-    append_right "7d: $bar ↻${reset}"
-  else
-    append_right "7d: $bar"
-  fi
-fi
-
-# Context window (always show if available)
-if [ -n "$ctx_max" ] && [ "$ctx_max" != "0" ]; then
+# Context window segment
+ctx_full="" ctx_short=""
+if [ -n "$ctx_max" ] && [ "$ctx_max" != "0" ] && [ -n "$ctx_pct" ]; then
   ctx_used=$((ctx_input + ctx_output + ctx_cache_create + ctx_cache_read))
   used_fmt=$(format_tokens "$ctx_used")
   max_fmt=$(format_tokens "$ctx_max")
-  if [ -n "$ctx_pct" ]; then
-    bar=$(make_bar "$ctx_pct")
-    append_right "ctx: $bar ${used_fmt}/${max_fmt}"
-  else
-    append_right "ctx: ${used_fmt}/${max_fmt}"
-  fi
-elif [ -n "$ctx_pct" ]; then
   bar=$(make_bar "$ctx_pct")
-  append_right "ctx: $bar"
+  ctx_pct_int=$(printf '%.0f' "$ctx_pct")
+  ctx_full="ctx: $bar ${used_fmt}/${max_fmt}"
+  ctx_short="ctx: ${ctx_pct_int}%"
+elif [ -n "$ctx_pct" ]; then
+  ctx_pct_int=$(printf '%.0f' "$ctx_pct")
+  bar=$(make_bar "$ctx_pct")
+  ctx_full="ctx: $bar"
+  ctx_short="ctx: ${ctx_pct_int}%"
+fi
+
+# 5-hour rate limit segment
+five_full="" five_short=""
+if [ -n "$five_pct" ]; then
+  bar=$(make_bar "$five_pct")
+  reset=$(format_reset "$five_reset")
+  five_pct_int=$(printf '%.0f' "$five_pct")
+  if [ -n "$reset" ]; then
+    five_full="5h: $bar ${reset}"
+    five_short="5h: ${five_pct_int}%"
+  else
+    five_full="5h: $bar"
+    five_short="5h: ${five_pct_int}%"
+  fi
+fi
+
+# Weekly rate limit segment
+week_full="" week_short=""
+if [ -n "$week_pct" ]; then
+  bar=$(make_bar "$week_pct")
+  reset=$(format_reset "$week_reset")
+  week_pct_int=$(printf '%.0f' "$week_pct")
+  if [ -n "$reset" ]; then
+    week_full="7d: $bar ${reset}"
+    week_short="7d: ${week_pct_int}%"
+  else
+    week_full="7d: $bar"
+    week_short="7d: ${week_pct_int}%"
+  fi
+fi
+
+# ── Assemble right side with adaptive truncation ───────────────────────────────
+term_width=$(tput cols 2>/dev/null || printf '200')
+
+build_right() {
+  r=""
+  for seg in "$@"; do
+    if [ -z "$seg" ]; then continue; fi
+    if [ -z "$r" ]; then
+      r="$seg"
+    else
+      r="$r  |  $seg"
+    fi
+  done
+  printf '%s' "$r"
+}
+
+str_len() {
+  printf '%s' "$1" | wc -m
+}
+
+# Level 0: full
+right=$(build_right "$ctx_full" "$five_full" "$week_full")
+total_len=$(( $(str_len "$left") + 5 + $(str_len "$right") ))  # 5 = "  |  "
+
+if [ "$total_len" -gt "$term_width" ]; then
+  # Level 1: ctx/rate limit 를 % 만 표시, 리셋 시간 유지
+  right=$(build_right "$ctx_short" "$five_full" "$week_full")
+  total_len=$(( $(str_len "$left") + 5 + $(str_len "$right") ))
+fi
+
+if [ "$total_len" -gt "$term_width" ]; then
+  # Level 2: 리셋 시간 제거
+  right=$(build_right "$ctx_short" "$five_short" "$week_short")
 fi
 
 # ── Output ────────────────────────────────────────────────────────────────────
