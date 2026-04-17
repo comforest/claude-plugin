@@ -1,12 +1,11 @@
 {
   "name": "default",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "description": "General-purpose Claude Code plugin for WSL2/Windows development. Provides automatic worktree creation, desktop notifications for permission requests and task completion, and a Powerlevel10k-inspired status line with 5h/7d rate limit meters.",
   "author": {
     "name": "comforest"
   },
   "license": "MIT",
   "keywords": ["hooks", "worktree", "notification", "wsl2", "windows", "statusline"],
-  "hooks": "./hooks/hooks.json",
   "commands": ["./commands/install-statusline.md"]
 }
