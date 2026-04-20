@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/scripts/worktree-add.sh"
+            "command": "$HOME/.claude/plugins/marketplaces/comforest/plugins/default/scripts/worktree-add.sh"
           }
         ]
       }
