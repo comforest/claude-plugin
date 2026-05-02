@@ -1,7 +1,7 @@
 {
   "name": "kopring",
-  "version": "1.0.1",
-  "description": "Claude Code plugin for Gradle + Kotlin Spring Boot projects. Provides a structured 3-phase feature development workflow (plan → implement → PR).",
+  "version": "2.0.0",
+  "description": "Claude Code plugin for Gradle + Kotlin Spring Boot projects. 4-step workflow optimized for token usage and resumability across sessions: plan → review (subagent) → execute → pr. Reviews always run in fresh subagent context; all progress is persisted to a single plan markdown file.",
   "author": {
     "name": "comforest"
   },
