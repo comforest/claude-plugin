@@ -1,9 +1,19 @@
 # [기능명]
 
 > 작성일: yyyy-mm-dd
-> 베이스 브랜치: feat/PROJ-1
+> 통합 브랜치 (integration): `feat/PROJ-1`  <!-- 색션 sub-branch들의 stack base. 색션 1개면 이 브랜치 자체가 PR head -->
+> 머지 대상 (merge target): `main`           <!-- 통합 브랜치를 최종 머지할 곳. 단일 색션 PR의 `--base`이기도 함 -->
 > 지라: [PROJ-1](https://your-org.atlassian.net/browse/PROJ-1)
 > 상태: drafting | reviewed | in-progress | done
+
+전체 상태값과 갱신 책임:
+
+| 값 | 의미 | 갱신 주체 / 시점 |
+|----|------|------------------|
+| `drafting` | plan 작성 중 | `startPlan` 스킬 — 최초 생성 시 |
+| `reviewed` | 리뷰 통과 | `review` 스킬(plan 모드) — Critical/Major 0건일 때 |
+| `in-progress` | 색션 구현 중 | `execute` 스킬 — 첫 색션을 `in-progress`로 옮길 때 |
+| `done` | 모든 색션 merged | `execute` 스킬 Step 3-2의 머지 동기화에서 마지막 색션이 `merged`로 전이될 때 |
 
 ---
 
@@ -106,6 +116,8 @@
 ---
 
 ## 진행 상태
+
+색션 상태값: `pending` → `in-progress` → `done`(구현·테스트 통과) → `pr-open`(PR 생성됨, 머지 전) → `merged`.
 
 | 색션 | 브랜치 | 상태 | PR |
 |------|--------|------|-----|

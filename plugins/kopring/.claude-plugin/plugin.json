@@ -1,7 +1,7 @@
 {
   "name": "kopring",
   "version": "2.0.0",
-  "description": "Claude Code plugin for Gradle + Kotlin Spring Boot projects. 4-step workflow optimized for token usage and resumability across sessions: plan → review (subagent) → execute → pr. Reviews always run in fresh subagent context; all progress is persisted to a single plan markdown file.",
+  "description": "Claude Code plugin for Gradle + Kotlin Spring Boot projects. 4-step workflow optimized for token usage and resumability across sessions: startPlan → review (subagent) → execute → pr. Once `startPlan` is invoked the chain runs automatically; it pauses only when `review` finds Critical/Major issues or after a section PR is opened (the next section requires PR merge before it can resume). Reviews always run in fresh subagent context; all progress is persisted to a single plan markdown file.",
   "author": {
     "name": "comforest"
   },

@@ -1,10 +1,12 @@
 ---
 name: review
 description: >
-  Spring Boot/Kotlin 프로젝트의 계획서·코드·PR을 **새로운 세션 subagent**에서 객관적으로 리뷰합니다.
-  메인 컨텍스트가 작성자라면 같은 컨텍스트에서 검토하면 편향이 생기므로, 항상 컨텍스트 없는 subagent에 위임합니다.
-  "계획 리뷰", "plan 검토", "코드 리뷰", "review 해줘", "PR 리뷰", "이거 검토해줘"
-  같은 요청에 이 스킬을 사용하세요. 검토 결과는 대상 파일/PR에 그대로 기록되어 다음 세션에서도 이어볼 수 있습니다.
+  Spring Boot/Kotlin 프로젝트의 계획서/코드/PR 변경사항을 **새로운 세션 subagent**에서 객관적으로 리뷰합니다.
+  메인 컨텍스트가 작성자라면 편향이 생기므로 항상 컨텍스트 없는 subagent에 위임합니다.
+  사용자가 직접 호출하거나, 선행 스킬(`startPlan` 작성 완료)이 자동 체이닝으로 호출합니다.
+  "리뷰", "검토", "review" 같은 자연어 발화도 매칭됩니다.
+  plan 모드에서 Critical/Major 0건이면 자동으로 `execute`를 호출하고, 발견 사항이 있으면 자동 체인을 중단해 사용자 결정을 기다립니다.
+  PR에 달린 코멘트를 코드에 반영하는 작업은 이 스킬이 아니라 별도의 `pr-review` 스킬입니다.
 ---
 
 # review — 객관 리뷰 스킬
@@ -14,7 +16,9 @@ description: >
 토큰 절약 핵심:
 
 - 리뷰 대상 파일/diff는 subagent가 직접 읽음 — 메인 컨텍스트로 끌고 오지 않음.
-- 단순 plan 검토는 `sonnet`, 복잡한 코드/보안 리뷰는 `opus`.
+- 모델은 대상 규모/난이도로 동적 선택:
+  - plan 리뷰: 기본 `sonnet`. 색션 5개 초과 또는 보안/트랜잭션 비중 높으면 `opus`.
+  - code/PR 리뷰: 기본 `opus`. 변경 파일 ≤ 3 또는 단순 텍스트/설정 변경이면 `sonnet`.
 - subagent에게 **결과는 구조화된 짧은 형태로** 요청.
 
 ---
@@ -25,23 +29,23 @@ description: >
 
 | 대상 | 트리거 | 입력 |
 |------|--------|------|
-| `plan` | "계획 리뷰", "plan 검토" / 또는 `docs/*-*.md` 경로 명시 | plan 파일 경로 |
+| `plan` | 사용자가 plan 모드 명시 / 또는 `docs/*-*.md` 경로 명시 | plan 파일 경로 |
 | `code` | "코드 리뷰", "변경사항 검토" / 현재 브랜치 작업 중 | `git diff <base>...HEAD` 범위 |
 | `pr` | "PR 리뷰", PR 번호 명시 | PR 번호 |
 
 명시되지 않으면 사용자에게 묻습니다. **추측하지 않습니다** — 잘못 리뷰하면 토큰 낭비.
 
-코드/PR 리뷰는 비교 기준 브랜치를 확인합니다 (plan 메타의 베이스 브랜치, 또는 사용자에게 질의).
+코드/PR 리뷰는 비교 기준 브랜치를 확인합니다 (plan 메타의 통합 브랜치 또는 머지 대상, 또는 사용자에게 질의).
 
 ---
 
 ## Step 2. subagent 위임
 
-대상에 맞는 프롬프트를 골라 `Agent` 도구로 호출합니다.
+대상에 맞는 프롬프트를 골라 `Agent` 도구로 호출합니다 (모델은 위 동적 선택 기준 적용).
 
-- **plan 리뷰**: `subagent_type=general-purpose`, `model=sonnet`, prompt = `references/plan-review-prompt.md` 본문 + 대상 파일 경로
-- **code 리뷰**: `subagent_type=general-purpose`, `model=opus`, prompt = `references/code-review-prompt.md` 본문 + diff 범위/베이스 브랜치
-- **PR 리뷰**: `subagent_type=general-purpose`, `model=opus`, prompt = `references/code-review-prompt.md` 본문 + `gh pr view ...` 안내 + PR 번호
+- **plan 리뷰**: `subagent_type=general-purpose`, prompt = `references/plan-review-prompt.md` 본문 + 대상 파일 경로
+- **code 리뷰**: `subagent_type=general-purpose`, prompt = `references/code-review-prompt.md` 본문 + diff 범위/비교 기준 브랜치
+- **PR 리뷰**: `subagent_type=general-purpose`, prompt = `references/code-review-prompt.md` 본문 + `gh pr view ...` 안내 + PR 번호
 
 호출 시 명시할 것:
 
@@ -55,7 +59,9 @@ description: >
 
 subagent 결과를 받은 뒤:
 
-- **plan 리뷰**: subagent가 이미 파일에 기록. 메인은 사용자에게 "리뷰 완료, `## 리뷰 결과` 섹션 확인" 안내. 발견된 이슈가 있으면 "수정사항 반영 후 `execute`로 진행하세요" 안내.
+- **plan 리뷰**: subagent가 이미 파일에 기록. 메인은 결과 카테고리만 확인하고 자동 체이닝 분기:
+  - **Critical/Major 0건** → plan 메타 헤더의 `상태:`를 `drafting` → `reviewed`로 `Edit`. 사용자에게 "리뷰 통과, execute 자동 진행" 한 줄 안내 후 **즉시 `Skill` 도구로 `execute` 호출** (plan 경로 전달).
+  - **Critical/Major 있음** → 메타 `상태:`는 그대로 `drafting`. 자동 체인 중단. 사용자에게 발견된 항목 카테고리/개수만 요약하고 "`startPlan`을 다시 호출해 본문을 갱신해주세요. 갱신 후 자동으로 review가 다시 돌아갑니다" 안내. (review 스킬은 본문을 직접 수정하지 않음)
 - **code 리뷰**: 결과를 사용자에게 그대로 보여줌. 자동 수정하지 않음 — 사용자가 직접 결정.
 - **PR 리뷰**: 결과를 사용자에게 보여줌. 사용자가 원하면 `gh pr review ... --comment` 또는 GitHub 인라인 코멘트로 게시. 자동 게시 안 함.
 

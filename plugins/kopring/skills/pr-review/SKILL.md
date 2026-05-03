@@ -19,45 +19,17 @@ origin(fork) PR에 사용자가 남긴 리뷰 코멘트를 수집/분류하고,
 ## Step 1. PR 특정 및 리뷰 코멘트 수집
 
 현재 브랜치와 연결된 PR을 찾습니다:
+
 ```bash
 gh pr view --json number,headRefName,baseRefName,url
+PR_NUMBER=<번호>
 ```
 
 PR이 여러 개거나 찾지 못하면 사용자에게 번호를 물어봅니다.
 
-리뷰 코멘트를 모두 가져옵니다 (인라인 + 일반 리뷰 + 이슈 코멘트):
-```bash
-PR_NUMBER=<번호>
+리뷰 코멘트는 `references/fetch-commands.md`의 명령으로 수집합니다 (인라인 + 리뷰 + 이슈 코멘트, 필요 시 Resolved 상태 포함 GraphQL).
 
-# 인라인 코드 코멘트 (파일/라인 포함)
-gh api "repos/{owner}/{repo}/pulls/${PR_NUMBER}/comments" \
-  --jq '.[] | {id, path, line, body, user: .user.login, in_reply_to_id}'
-
-# PR 전체 리뷰 (승인/변경요청 본문)
-gh api "repos/{owner}/{repo}/pulls/${PR_NUMBER}/reviews" \
-  --jq '.[] | {id, state, body, user: .user.login}'
-
-# 일반 이슈 코멘트
-gh api "repos/{owner}/{repo}/issues/${PR_NUMBER}/comments" \
-  --jq '.[] | {id, body, user: .user.login}'
-```
-
-- **본인(Claude)이 남긴 코멘트는 제외**하고 사용자(리뷰어) 것만 대상으로 합니다.
-- 리뷰어의 답글(reply)이 달린 스레드는 **가장 마지막 상태**를 기준으로 처리 필요 여부를 판단합니다 (이미 해결된 스레드는 스킵).
-- Resolved 상태 조회가 필요하면:
-  ```bash
-  gh api graphql -f query='
-    query($owner:String!,$repo:String!,$pr:Int!){
-      repository(owner:$owner,name:$repo){
-        pullRequest(number:$pr){
-          reviewThreads(first:100){
-            nodes{ isResolved comments(first:20){ nodes{ body path line author{login} } } }
-          }
-        }
-      }
-    }' -F owner=<owner> -F repo=<repo> -F pr=${PR_NUMBER}
-  ```
-  `isResolved: true`인 스레드는 건너뜁니다.
+핵심 필터: 본인(Claude) 작성 제외, 답글 스레드는 마지막 상태 기준, `isResolved: true`는 스킵.
 
 ---
 
